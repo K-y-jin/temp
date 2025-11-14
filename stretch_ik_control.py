@@ -241,7 +241,7 @@ class StretchIKControl:
         self.joint_vel_abs_lim: Dict[Joint, Tuple[float, float]] = {}
         # Get the velocity limits for the controllable joints
         joint_map = {
-            Joint.BASE_TRANSLATION: ("base", "vel_m"),
+            # Joint.BASE_TRANSLATION: ("base", "vel_m"),
             Joint.ARM_LIFT: ("lift", "vel_m"),
             Joint.ARM_L0: ("arm", "vel_m"),
             Joint.COMBINED_ARM: ("arm", "vel_m"),
@@ -272,8 +272,11 @@ class StretchIKControl:
                     min_abs_vel = 0.0
             elif joint_name == Joint.BASE_ROTATION:
                 # https://github.com/hello-robot/stretch_visual_servoing/blob/f99342/normalized_velocity_control.py#L21
-                max_abs_vel = 0.5   # Joint.BASE_ROTATION: ("base, vel_m")로 불러오는 것보다 오히려 큰 값 
+                max_abs_vel = 0.5   # Joint.BASE_ROTATION: ("base, vel_m")로 불러오는 것(0.3 m/s)보다 오히려 큰 값 
                 min_abs_vel = 0.05  # rad/s
+            elif joint_name == Joint.BASE_TRANSLATION:
+                max_abs_vel = 0.5   # m/s
+                min_abs_vel = 0.3  # m/s
             else:
                 self.node.get_logger().debug(
                     f"Will not get limits for joint name: {joint_name}"
@@ -778,13 +781,13 @@ class StretchIKControl:
             K_base_rotation = 1.0
             vel = np.zeros(len(self.controllable_joints), dtype=float)
             vel[0] = K_base_rotation * err[0]  # rad/s
-            self.node.get_logger().info(f"##### Base Rotation Velocity: {vel[0]}, Error: {err[0]}")
+            self.node.get_logger().debug(f"##### Base Rotation Velocity: {vel[0]}, Error: {err[0]}")
             
             # Clip the velocities
             joint_velocities = dict(zip(self.controllable_joints, vel))
             self.node.get_logger().debug(f"Pre-Clip Velocities: {joint_velocities}")
             _, clipped_velocities = self.check_velocity_limits(joint_velocities)
-            self.node.get_logger().info(f"Commanding Velocities: {clipped_velocities}")
+            self.node.get_logger().debug(f"Commanding Velocities: {clipped_velocities}")
 
             # Send base commands
             base_vel = Twist()
@@ -799,7 +802,7 @@ class StretchIKControl:
         if check_cancel():
             yield MotionGeneratorRetval.FAILURE
         else:
-            self.node.get_logger().info("##### SUCCESS Rotation Base to Goal Pose.")
+            self.node.get_logger().debug("##### SUCCESS Rotation Base to Goal Pose.")
             if success_callback is not None:
                 success_callback()
             yield MotionGeneratorRetval.SUCCESS
@@ -876,16 +879,13 @@ class StretchIKControl:
             err = np.array([goal_x[0]])
             if err_callback is not None:
                 err_callback(err[0])
-            # self.node.get_logger().info(f"##### Base DistanceError: {err[0]}")
 
             # Calculate the joint velocities
             K_base_translation = 1.0
             vel = np.zeros(len(self.controllable_joints), dtype=float)
             joint_velocities = {}
-
             joint_velocities[Joint.BASE_TRANSLATION] = K_base_translation * err[0]  # m/s
-            self.node.get_logger().debug(f"##### Base Translation Velocity: {joint_velocities[Joint.BASE_TRANSLATION]}, Error: {err}")
-            
+
             # Clip the velocities
             self.node.get_logger().debug(f"Pre-Clip Velocities: {joint_velocities}")
             _, clipped_velocities = self.check_velocity_limits(joint_velocities)
@@ -904,7 +904,7 @@ class StretchIKControl:
         if check_cancel():
             yield MotionGeneratorRetval.FAILURE
         else:
-            self.node.get_logger().info("##### SUCCESS Translation Base to Goal Pose.")
+            self.node.get_logger().debug("##### SUCCESS Translation Base to Goal Pose.")
             if success_callback is not None:
                 success_callback()
             yield MotionGeneratorRetval.SUCCESS
@@ -951,50 +951,6 @@ class StretchIKControl:
             result = future.result()
             if not result.success:
                 self.node.get_logger().error("Failed to switch to navigation mode.")
-                return False
-        return True
-
-    def set_position_mode(self, timeout: Duration, rate_hz: float = 10.0) -> bool:
-        """
-        Set the control mode to position.
-
-        Parameters
-        ----------
-        timeout: The timeout.
-        rate_hz: The rate in Hz at which to control the robot.
-
-        Returns
-        -------
-        bool: True if the control mode was successfully set.
-        """
-        start_time = self.node.get_clock().now()
-        # Invoke the service
-        self.node.get_logger().info("Switching to position mode...")
-        ready = self.switch_to_position_client.wait_for_service(
-            timeout_sec=timeout.nanoseconds / 1.0e9
-        )
-        if not ready:
-            self.node.get_logger().error(
-                f"Service {self.switch_to_position_client.srv_name} not available."
-            )
-            return False
-        future = self.switch_to_position_client.call_async(Trigger.Request())
-        rate = self.node.create_rate(rate_hz)
-        while rclpy.ok() and not future.done():
-            # Check if we've reached timeout
-            if (
-                remaining_time(
-                    self.node.get_clock().now(), start_time, timeout, return_secs=True
-                )
-                <= 0.0
-            ):
-                self.node.get_logger().error("Failed to switch to position mode.")
-                return False
-            rate.sleep()
-        if future.done():
-            result = future.result()
-            if not result.success:
-                self.node.get_logger().error("Failed to switch to position mode.")
                 return False
         return True
 
