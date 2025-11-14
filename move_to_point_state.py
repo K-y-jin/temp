@@ -12,8 +12,6 @@ from std_msgs.msg import Header
 # Local imports
 from .constants import (
     Joint,
-    get_gripper_configuration,
-    get_pregrasp_wrist_configuration,
     get_stow_configuration,
 )
 from .stretch_ik_control import (
@@ -37,19 +35,17 @@ class MoveToPointState(Enum):
     """
 
     STOW_ARM = 0
-    HEAD_PAN_TO_GOAL = 1
-    ROTATE_BASE = 2
-    HEAD_PAN = 3
-    MOVE_BASE = 4
-    HEAD_TILT = 5
-    TERMINAL = 8
+    ROTATE_BASE = 1
+    HEAD_PAN = 2
+    MOVE_BASE = 3
+    HEAD_TILT = 4
+    TERMINAL = 5
 
     @staticmethod
     def get_state_machine(setup_mode: bool = True) -> List[List[MoveToPointState]]:
         states = []
         if setup_mode:
             states.append([MoveToPointState.STOW_ARM])
-            # states.append([MoveToPointState.HEAD_PAN_TO_GOAL])
             states.append([MoveToPointState.ROTATE_BASE, MoveToPointState.HEAD_PAN])
             states.append([MoveToPointState.HEAD_TILT])
             states.append([MoveToPointState.MOVE_BASE])
@@ -127,10 +123,11 @@ class MoveToPointState(Enum):
 
             goal_pose.pose.position = Point(x=ik_solution[Joint.BASE_TRANSLATION], y=0.0, z=0.0)
             goal_pose.pose.orientation = Quaternion(x=1.0, y=0.0, z=0.0, w=0.0)
-            # dummy
+            # Joint.BASE_TRANSLATION is not included in the controllable joints
+            # So, we cannot use the ZERO_VEL termination criteria
             return controller.translate_base_to_goal_pose(
                 goal=goal_pose,
-                termination=TerminationCriteria.ZERO_VEL,
+                termination=TerminationCriteria.ZERO_ERR,
                 timeout_secs=timeout_secs,
                 check_cancel=check_cancel,
                 err_callback=error_callback_temp,

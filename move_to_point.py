@@ -14,10 +14,8 @@ import rclpy
 # Third-Party Imports
 import stretch_urdf.urdf_utils as uu
 import tf2_ros
-import yaml
 
 from cv_bridge import CvBridge
-from geometry_msgs.msg import Point, Quaternion, Transform, TransformStamped, Vector3
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
@@ -26,23 +24,14 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, CompressedImage
-from std_msgs.msg import Header
-from tf2_geometry_msgs import PoseStamped
-from tf_transformations import quaternion_about_axis, quaternion_multiply
 
 # Local Imports
 from nrc_web_teleop.action import MoveToPoint
 from nrc_web_teleop_helpers.constants import (
-    Frame,
     Joint,
-    adjust_arm_lift_for_base_collision,
-    get_pregrasp_wrist_configuration,
-    get_stow_configuration,
 )
 from nrc_web_teleop_helpers.conversions import (
     remaining_time,
-    ros_msg_to_cv2_image,
-    tf2_transform,
 )
 from nrc_web_teleop_helpers.move_to_point_state import MoveToPointState
 from nrc_web_teleop_helpers.stretch_ik_control import (
@@ -164,16 +153,18 @@ class MoveToPointNode(Node):
     async def execute_callback(
         self, goal_handle: ServerGoalHandle
     ) -> MoveToPoint.Result:
-        
+    
         # Functions to cleanup the action
         terminate_motion_executors = False
         motion_executors: List[Generator[MotionGeneratorRetval, None, None]] = []
 
-        def cleanup():
-            """Clean up resources after action completion"""
-            with self.active_goal_request_lock:
-                self.active_goal_request = None
-
+        def cleanup() -> None:
+            """
+            Clean up before returning from the action.
+            """
+            nonlocal terminate_motion_executors, motion_executors
+            self.active_goal_request = None
+            self.get_logger().debug("Setting termination flag to True")
             terminate_motion_executors = True
             # Execute the motion executors once more to process cancellation.
             if len(motion_executors) > 0:
